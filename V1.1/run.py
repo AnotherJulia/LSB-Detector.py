@@ -4,7 +4,7 @@ from transition import *
 
 # ------------------------
 #seed = RunTargeting(n_generations=2, print_progress=True, target_method="mean")
-#seperation, reattachment, transition = GetCharacteristics(seed, print_characteristics=True)
+#seperation, reattachment, transition = GetCharacteristics(seed, print_characteristics=False)
 #PlotTargetHeatmap(seed)
 
 GetTargetChange(plot=True)

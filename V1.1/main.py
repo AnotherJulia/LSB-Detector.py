@@ -10,8 +10,10 @@ import random
 
 
 # Import the tutor's data
-piv_file_path = os.path.join(os.path.dirname(__file__), "./PIV.dat")
+piv_file_path = os.path.join(os.path.dirname(__file__), "../PIV.dat")
 piv_data = np.genfromtxt(piv_file_path, skip_header=1, delimiter=",")
+
+
 
 # Data settings
 xcount, ycount = 395, 57

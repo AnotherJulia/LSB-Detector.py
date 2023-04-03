@@ -115,39 +115,27 @@ def GetTargetContour(n_steps=15, degree=6, min_y=laminar_height, plot_hm=False):
 def GetTargetChange(boundary_factor=1.0, plot=False):
     acc = GetAccelerationMap(output="abs")
 
-    #acc[np.where(acc < boundary_factor)] = 0
+    acc_resolution = 1
 
-    acc_resolution = 10
-    xh = np.arange(X.min(), X.max(), acc.shape[0])
-    yh = np.arange(Y.min(), Y.max(), acc.shape[1])
-    xy_grid = np.array([[x,y] for x in xh for y in yh])
+    xi = np.linspace(X.min(), X.max(), xcount)
+    yi = np.linspace(Y.min(), Y.max(), ycount)
+    xy_points = np.array([[x, y] for x in xi for y in yi])
 
-    xgrid, ygrid = np.meshgrid(xh, yh, indexing="ij", sparse=True)
+    acc_grid = acc.reshape((xcount, ycount))
+    acc_interpolator = RegularGridInterpolator((np.unique(X), np.unique(Y)), acc_grid)
 
-    acc_intpl = RegularGridInterpolator((xgrid, ygrid), acc)
+    xh = np.arange(X.min(), X.max(), xcount*acc_resolution)
+    yh = np.arange(Y.min(), Y.max(), ycount*acc_resolution)
+    xy_points = np.array([[xi,yi] for xi in xh for yi in yh])
 
-    xres = np.arange(X.min(), X.max(), acc.shape[0]*acc_resolution)
-    yres = np.arange(Y.min(), Y.max(), acc.shape[1]*acc_resolution)
-    resolution_grid = np.array([[x,y] for x in xres for y in yres])
+    acc_interpolated = acc_interpolator(xy_points)
+    print(acc_interpolated)
 
-    interpolated_acc = acc_intpl(resolution_grid)
-
-
-
-
-
-
-    
-
-
-    # Let's add an interpolator to out acceleration so that we can find a higher resolution acceleration graph
-
-    
 
     # Plot the shitshow to test
     if plot:
         fig_gradient, ax_gradient = plt.subplots()
-        heatmap = ax_gradient.imshow(interpolated_acc[::-1,:], extent=(piv_data[-1,0], piv_data[0,0], piv_data[-1,1], piv_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
+        heatmap = ax_gradient.imshow(acc_interpolated[::-1,:], extent=(piv_data[-1,0], piv_data[0,0], piv_data[-1,1], piv_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
         plt.colorbar(heatmap, label="Absolute acceleration [1/U$_{inf}$]", ax=ax_gradient)
         ax_gradient.set_xlabel("x/c [-]")
         ax_gradient.set_ylabel("y/c [-]")
@@ -167,6 +155,8 @@ def GetAccelerationMap(output="abs"):
     # Find the actual acceleration map using the finite differenec method
     print("Finding acceleraton map")
     acceleration = FiniteDifferenceMethod(absv, dx=0.1, stencil=5, output=output)
+
+    # remove the outer 3 layers from the array -- later we can add these back with an exterpolator perhaps?
 
     return acceleration
 
