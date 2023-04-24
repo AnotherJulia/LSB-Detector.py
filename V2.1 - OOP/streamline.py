@@ -24,8 +24,9 @@ class Streamline():
         self.dataprocessor = dataprocessor
         self.resolution = self.dataprocessor.resolution
 
-        xspace = np.linspace(self.dataprocessor.X.min(), self.dataprocessor.X.max(), 395*self.resolution)
-        self.generateStreamlinePoints(xspace, min_y=cutoff_laminar)
+        self.xspace = np.linspace(self.dataprocessor.X.min(), self.dataprocessor.X.max(), 395*self.resolution)
+        
+        self.generateStreamlinePoints(self.xspace, min_y=cutoff_laminar)
     
     def f(self, t, xy):
         if xy[1] < self.dataprocessor.y.min() or xy[1] > self.dataprocessor.y.max() or xy[0] < self.dataprocessor.x.min() or xy[0] > self.dataprocessor.x.max():
