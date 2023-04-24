@@ -17,15 +17,17 @@ step = 20
 
 
 class DataProcessor():
-    def __init__(self, data_path, data_resolution):
+    def __init__(self, data_path, data_resolution=2, acceleration_resolution=2):
         self.path = data_path
         self.resolution = data_resolution
-        self.acceleration_resolution = 5
+        self.acceleration_resolution = acceleration_resolution
 
         self.xcount, self.ycount = x_dim * self.resolution, y_dim * self.resolution
 
         self.storeData()
         self.estimateLaminarHeight(seperation_point_estimate_xc=0.45)
+
+        self.target_steps = 10
 
         
     def storeData(self):
@@ -49,11 +51,11 @@ class DataProcessor():
         yi = np.linspace(self.Y.min(), self.Y.max(), y_dim)
         xy_points = np.array([[x, y] for x in xi for y in yi])
 
-        U_grid = self.U.reshape((x_dim, y_dim))
-        V_grid = self.V.reshape((x_dim, y_dim))
+        self.U_grid = self.U.reshape((x_dim, y_dim))
+        self.V_grid = self.V.reshape((x_dim, y_dim))
 
-        u_intpl = RegularGridInterpolator((np.unique(self.X), np.unique(self.Y)), U_grid)
-        v_intpl = RegularGridInterpolator((np.unique(self.X), np.unique(self.Y)), V_grid)
+        u_intpl = RegularGridInterpolator((np.unique(self.X), np.unique(self.Y)), self.U_grid)
+        v_intpl = RegularGridInterpolator((np.unique(self.X), np.unique(self.Y)), self.V_grid)
         
         return u_intpl, v_intpl
     
@@ -249,20 +251,22 @@ class DataProcessor():
     def getTargetContourAcceleration(self, degree=2, plot=False):
         print("Starting Target Sequence")
         raw_acceleration_grid = self.getAccelerationOverGrid()
-        a_interpolator = self._getAccelerationInterpolator(raw_acceleration_grid)
+        self.a_interpolator = self._getAccelerationInterpolator(raw_acceleration_grid)
         print("Acceleration interpolator found")
 
-        xi = np.linspace(self.X.min(), self.X.max(), self.xcount*self.acceleration_resolution)
-        yi = np.linspace(self.Y.min(), self.Y.max(), self.ycount*self.acceleration_resolution)
+        xi = np.linspace(self.X.min(), self.X.max(), x_dim*self.acceleration_resolution)
+        yi = np.linspace(self.Y.min(), self.Y.max(), y_dim*self.acceleration_resolution)
         xy_points = np.array([[x,y] for x in xi for y in yi])
 
+        print("Calculating Acceleration")
         interpolated_acceleration = []
         for point in xy_points:
-            acc = a_interpolator(point[0], point[1])
+            acc = self.a_interpolator(point[0], point[1])
             interpolated_acceleration.append(acc)
 
+
+        interpolated_acceleration = np.array(interpolated_acceleration).reshape((x_dim*self.acceleration_resolution, y_dim*self.acceleration_resolution))
         print("Interpolated acceleration found")
-        interpolated_acceleration = np.array(interpolated_acceleration).reshape((self.xcount*self.acceleration_resolution, self.ycount*self.acceleration_resolution))
 
         '''
         Steps to process:
@@ -277,7 +281,7 @@ class DataProcessor():
         point = xy_points[amax] + 1e-3
         # print(point)
 
-        xy_points = xy_points.reshape((self.xcount*self.acceleration_resolution, self.ycount*self.acceleration_resolution, 2))
+        xy_points = xy_points.reshape((x_dim*self.acceleration_resolution, y_dim*self.acceleration_resolution, 2))
         index = np.where(xy_points[:,:,1] <= point[1])
         interpolated_acceleration[index] = 0.0 
 
@@ -287,11 +291,12 @@ class DataProcessor():
         y_min, y_max = point[1], 0.03
         yspace = np.arange(y_min, y_max, 1e-5)
 
+        # TODO: Make this section more efficient.
         contour_points = []
         for x in xspace:
             accelerations = []
             for y in yspace:
-                acc = a_interpolator(x, y)
+                acc = self.a_interpolator(x, y)
                 accelerations.append(acc)
             accelerations = np.array(accelerations)
             
@@ -300,9 +305,21 @@ class DataProcessor():
         contour_points = np.array(contour_points)
         
         # Now that we have our contour points, let's find the best fitting polynomial for it and export that shit
-        print("Finding targetp olynomial")
+        print("Finding target Polynomial")
         coeff = np.polyfit(contour_points[:, 0], contour_points[:, 1], degree)
         polynomial = np.poly1d(coeff)
+
+        xspace = np.linspace(0.51, 0.64, self.target_steps)
+        yspace = polynomial(xspace)
+
+        print("Target polynomial found")
+        
+        contour_points = []
+        for i in range(len(xspace)):
+            point = [xspace[i], yspace[i]]
+            contour_points.append(point)
+        contour_points = np.array(contour_points)
+
 
         if plot:
             interpolated_acceleration = interpolated_acceleration.T
@@ -320,7 +337,33 @@ class DataProcessor():
         return contour_points, polynomial
 
     def _getAccelerationInterpolator(self, acceleration_grid):
-        acc_xcount, acc_ycount = self.xcount*self.acceleration_resolution, self.ycount*self.acceleration_resolution
         interpolator = interp2d(np.unique(self.X), np.unique(self.Y), acceleration_grid)    
 
         return interpolator
+
+    def plotTargetPolynomial(self, target_polynomial):
+        xi = np.linspace(self.X.min(), self.X.max(), x_dim*self.acceleration_resolution)
+        yi = np.linspace(self.Y.min(), self.Y.max(), y_dim*self.acceleration_resolution)
+        xy_points = np.array([[x,y] for x in xi for y in yi])
+
+        interpolated_acceleration = []
+        for point in xy_points:
+            acc = self.a_interpolator(point[0], point[1])
+            interpolated_acceleration.append(acc)
+        interpolated_acceleration = np.array(interpolated_acceleration).reshape((x_dim*self.acceleration_resolution, y_dim*self.acceleration_resolution)).T
+
+        print("Interpolated acceleration found")
+
+        fig_gradient, ax_gradient = plt.subplots()
+        heatmap = ax_gradient.imshow(interpolated_acceleration[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
+        plt.colorbar(heatmap, label="Absolute acceleration [1/U$_{inf}$]", ax=ax_gradient)
+        ax_gradient.set_xlabel("x/c [-]")
+        ax_gradient.set_ylabel("y/c [-]")
+        
+        xspace = np.linspace(0.51, 0.64, self.target_steps)
+        targety = target_polynomial(xspace)
+
+        ax_gradient.scatter(xspace, targety, color="blue", s=1)
+        ax_gradient.plot(xspace, targety, color="black", linewidth=1.2)
+
+        plt.show()
