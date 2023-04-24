@@ -4,14 +4,16 @@ from dataprocessor import DataProcessor
 piv_path = "../PIV.dat"
 
 # Initialize the dataprocessor
-dataprocessor = DataProcessor(data_path=piv_path, data_resolution=10)
-# dataprocessor.plot("acceleration heatmap")
+dataprocessor = DataProcessor(data_path=piv_path, data_resolution=2)
 
-# Initialize a streamline
+# Plot the Velocity or Acceleration Heatmap
+# dataprocessor.plot("acceleration heatmap"
+# Initialize a streamline with custom seed
 # streamline = Streamline(dataprocessor, seed = [0.47, 0.001])
 
 # Plot the above initialized streamline in a basic streamline plot
 # streamline.plot()
 
-# Plot the Acceleration Heatmap
+# get the target contour using the acceleration map
 dataprocessor.getTargetContourAcceleration(plot=True)
+ 

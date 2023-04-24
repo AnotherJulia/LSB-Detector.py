@@ -117,10 +117,6 @@ def GetTargetChange(boundary_factor=1.0, plot=False):
 
     acc_resolution = 1
 
-    xi = np.linspace(X.min(), X.max(), xcount)
-    yi = np.linspace(Y.min(), Y.max(), ycount)
-    xy_points = np.array([[x, y] for x in xi for y in yi])
-
     acc_grid = acc.reshape((xcount, ycount))
     acc_interpolator = RegularGridInterpolator((np.unique(X), np.unique(Y)), acc_grid)
 

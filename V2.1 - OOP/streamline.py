@@ -76,9 +76,4 @@ class Streamline():
         elif plot_type == "boundary layer thicknesses":
             pass # TODO: Implement function
 
-<<<<<<< HEAD
-    
-=======
-
->>>>>>> master
         plt.show()

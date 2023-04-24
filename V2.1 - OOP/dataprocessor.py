@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 import os
-from scipy.interpolate import RegularGridInterpolator, interp1d
+from scipy.interpolate import RegularGridInterpolator, interp2d
 from scipy.integrate import solve_ivp, simpson
 
 # from streamline import *
@@ -61,16 +61,26 @@ class DataProcessor():
         yh = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
         xy_grid = np.array([[x, y] for x in xh for y in yh])
 
-        u_intpl, v_intpl = self.getGridInterpolator()
+        u_intpl, _ = self.getGridInterpolator()
 
         absolute_velocity = u_intpl(xy_grid).reshape((self.xcount,self.ycount)).T
         return absolute_velocity
     
+    def _getRawVelocityOverGrid(self):
+
+        xh = np.linspace(self.X.min(), self.X.max(), x_dim)
+        yh = np.linspace(self.Y.min(), self.Y.max(), y_dim)
+        xy_grid = np.array([[x, y] for x in xh for y in yh])
+
+        u_intpl, _ = self.getGridInterpolator()
+
+        absolute_velocity = u_intpl(xy_grid).reshape((x_dim, y_dim)).T
+        return absolute_velocity
+
 
     def getAccelerationOverGrid(self):
-        absolute_velocity = self.getVelocityOverGrid()
+        absolute_velocity = self._getRawVelocityOverGrid()
         absolute_acceleration = self._FiniteDifferenceMethod(absolute_velocity, dx=0.1, stencil=5, output="abs")
-
         return absolute_acceleration
 
     def _FiniteDifferenceMethod(self, v, dx=1e-5, stencil=5, output="abs"):
@@ -142,7 +152,7 @@ class DataProcessor():
         # TODO: Find auto mean function
         mean = 0.55 
 
-        contour_x, contour_y = self._getContourPoints(mean)
+        contour_x, contour_y = self._getVelocityContourPoints(mean)
 
         heights = []
         for i in range(0, len(contour_x), int(len(contour_x/n_steps))):
@@ -166,7 +176,7 @@ class DataProcessor():
 
         return uCi, vCi
     
-    def _getContourPoints(self, mean):
+    def _getVelocityContourPoints(self, mean):
 
         # Create the grid for the matplotlib plot
         xh = np.linspace(self.X.min(), self.X.max(), self.xcount)
@@ -176,6 +186,28 @@ class DataProcessor():
         # Let matplotlib calculate contour points and extract those without plotting anything
         fig_contour, ax_contour = plt.subplots()
         contour = ax_contour.contour(xh, yh, absolute_velocity.reshape(self.ycount, self.xcount), levels=[mean], colors="black", linewidths=1)
+        p = contour.allsegs[0]
+        plt.close(fig_contour)
+
+        # Extract the contour points
+        contour_x = p[0][:, 0]
+        contour_y = p[0][:, 1]
+
+        return contour_x, contour_y
+    
+    def _getAccelerationContourPoints(self, acceleration_grid, mean, sf=0.1):
+        # Create the grid for the matplotlib plot
+        xh = np.linspace(self.X.min(), self.X.max(), self.xcount)
+        yh = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
+
+        min_mean = mean*(1-sf)
+        max_mean = mean*(1+sf)
+
+        meanspace = np.arange(min_mean, max_mean, 0.01)
+
+        # Let matplotlib calculate contour points and extract those without plotting anything
+        fig_contour, ax_contour = plt.subplots()
+        contour = ax_contour.contour(xh, yh, acceleration_grid.reshape(self.ycount, self.xcount), levels=meanspace, colors="black", linewidths=1)
         p = contour.allsegs[0]
         plt.close(fig_contour)
 
@@ -233,29 +265,39 @@ class DataProcessor():
         return filtered_points, polynomial
     
     def getTargetContourAcceleration(self, plot=True):
-        acceleration_grid = self.getAccelerationOverGrid()
-        interpolated_acceleration = self._interpolateAcceleration(acceleration_grid)
+        raw_acceleration_grid = self.getAccelerationOverGrid()
+        interpolated_acceleration = self._interpolateAcceleration(raw_acceleration_grid)
 
         if plot:
             fig_gradient, ax_gradient = plt.subplots()
-            heatmap = ax_gradient.imshow(acceleration_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
+            heatmap = ax_gradient.imshow(interpolated_acceleration[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
             plt.colorbar(heatmap, label="Absolute acceleration [1/U$_{inf}$]", ax=ax_gradient)
             ax_gradient.set_xlabel("x/c [-]")
             ax_gradient.set_ylabel("y/c [-]")
             plt.show()
+        
+        '''
+        Steps to process:
+        X 1. Cut off the lower max acceleration bar (-> "Laminar height" part + little extra as safety)
+        2. Find max acc. -> contour that shit
+        3. From that contour filter out some points and create polynomial
+        '''
+
 
     def _interpolateAcceleration(self, acceleration_grid):
-        print(acceleration_grid)
-        acc_interpolator = RegularGridInterpolator((np.unique(self.X), np.unique(self.Y)), acceleration_grid)
+        acc_resolution = 5
+        acc_xcount, acc_ycount = self.xcount*acc_resolution, self.ycount*acc_resolution
 
-        xi = np.linspace(self.X.min(), self.X.max(), self.xcount)
-        yi = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
-        xy_points = np.array([[x,y] for x in xi for y in yi])
+        acc_interpolator = interp2d(np.unique(self.X), np.unique(self.Y), acceleration_grid)    
 
-        interpolated_acceleration = acc_interpolator(xy_points)
+        xi = np.linspace(self.X.min(), self.X.max(), acc_xcount)
+        yi = np.linspace(self.Y.min(), self.Y.max(), acc_ycount)
+        xy_points = [[x,y] for x in xi for y in yi]
+
+        interpolated_acceleration = []
+        for point in xy_points:
+            acc = acc_interpolator(point[0], point[1])
+            interpolated_acceleration.append(acc)
+        interpolated_acceleration = np.array(interpolated_acceleration).reshape((acc_xcount, acc_ycount)).T
 
         return interpolated_acceleration
-
-
-        
-
