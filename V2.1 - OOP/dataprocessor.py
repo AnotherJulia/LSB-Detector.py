@@ -6,7 +6,7 @@ import os
 from scipy.interpolate import RegularGridInterpolator, interp1d
 from scipy.integrate import solve_ivp, simpson
 
-from Streamline import *
+# from streamline import *
 
 
 # Initialize some fixed variables
@@ -20,6 +20,8 @@ class DataProcessor():
     def __init__(self, data_path, data_resolution):
         self.path = data_path
         self.resolution = data_resolution
+
+        self.xcount, self.ycount = x_dim * self.resolution, y_dim * self.resolution
 
         self.storeData()
         self.estimateLaminarHeight(seperation_point_estimate=0.45)
@@ -54,15 +56,14 @@ class DataProcessor():
         return u_intpl, v_intpl
     
     def getVelocityOverGrid(self):
-        xcount, ycount = x_dim * self.resolution, y_dim * self.resolution
 
-        xh = np.linspace(self.X.min(), self.X.max(), xcount)
-        yh = np.linspace(self.Y.min(), self.Y.max(), ycount)
+        xh = np.linspace(self.X.min(), self.X.max(), self.xcount)
+        yh = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
         xy_grid = np.array([[x, y] for x in xh for y in yh])
 
         u_intpl, v_intpl = self.getGridInterpolator()
 
-        absolute_velocity = u_intpl(xy_grid).reshape((xcount,ycount)).T
+        absolute_velocity = u_intpl(xy_grid).reshape((self.xcount,self.ycount)).T
         return absolute_velocity
     
 
@@ -115,6 +116,8 @@ class DataProcessor():
         elif (plot_type == "acceleration heatmap"):
             heatmap_grid = self.getAccelerationOverGrid()
             self._plotAccelerationHeatmap(heatmap_grid)
+        
+        plt.show()
 
     def _plotVelocityHeatmap(self, heatmap_grid):
         fig_heatmap, ax_heatmap = plt.subplots()
@@ -166,13 +169,13 @@ class DataProcessor():
     def _getContourPoints(self, mean):
 
         # Create the grid for the matplotlib plot
-        xh = np.linspace(self.X.min(), self.X.max(), x_dim*self.resolution)
-        yh = np.linspace(self.Y.min(), self.Y.max(), y_dim*self.resolution)
+        xh = np.linspace(self.X.min(), self.X.max(), self.xcount)
+        yh = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
         absolute_velocity = self.getVelocityOverGrid()
 
         # Let matplotlib calculate contour points and extract those without plotting anything
         fig_contour, ax_contour = plt.subplots()
-        contour = ax_contour.contour(xh, yh, absolute_velocity.reshape(y_dim*self.resolution, x_dim*self.resolution), levels=[mean], colors="black", linewidths=1)
+        contour = ax_contour.contour(xh, yh, absolute_velocity.reshape(self.ycount, self.xcount), levels=[mean], colors="black", linewidths=1)
         p = contour.allsegs[0]
         plt.close(fig_contour)
 
@@ -228,6 +231,30 @@ class DataProcessor():
             plt.show()
 
         return filtered_points, polynomial
+    
+    def getTargetContourAcceleration(self, plot=True):
+        acceleration_grid = self.getAccelerationOverGrid()
+        interpolated_acceleration = self._interpolateAcceleration(acceleration_grid)
+
+        if plot:
+            fig_gradient, ax_gradient = plt.subplots()
+            heatmap = ax_gradient.imshow(acceleration_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
+            plt.colorbar(heatmap, label="Absolute acceleration [1/U$_{inf}$]", ax=ax_gradient)
+            ax_gradient.set_xlabel("x/c [-]")
+            ax_gradient.set_ylabel("y/c [-]")
+            plt.show()
+
+    def _interpolateAcceleration(self, acceleration_grid):
+        print(acceleration_grid)
+        acc_interpolator = RegularGridInterpolator((np.unique(self.X), np.unique(self.Y)), acceleration_grid)
+
+        xi = np.linspace(self.X.min(), self.X.max(), self.xcount)
+        yi = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
+        xy_points = np.array([[x,y] for x in xi for y in yi])
+
+        interpolated_acceleration = acc_interpolator(xy_points)
+
+        return interpolated_acceleration
 
 
         
