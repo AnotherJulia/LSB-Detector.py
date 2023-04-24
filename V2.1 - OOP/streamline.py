@@ -52,6 +52,7 @@ class Streamline():
         return positions
 
     def plot(self, plot_type="streamline"):
+        """plot_type options: "streamline", "boundary layer thicknesses"""
         if plot_type == "streamline":
             heatmap_grid = self.dataprocessor.getVelocityOverGrid()
             
@@ -72,8 +73,12 @@ class Streamline():
             
             # TODO: ADD Transition point determination!
 
-        elif plot_type == "Boundary layer thicknesses":
+        elif plot_type == "boundary layer thicknesses":
             pass # TODO: Implement function
 
+<<<<<<< HEAD
+    
+=======
 
+>>>>>>> master
         plt.show()
