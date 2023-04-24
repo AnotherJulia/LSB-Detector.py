@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataprocessor import DataProcessor
 
+from scipy.interpolate import RegularGridInterpolator, interp1d
+from scipy.integrate import solve_ivp, simpson
+
 from dataprocessor import *
 
 cutoff_reattachment = 0.007
@@ -73,5 +76,9 @@ class Streamline():
         elif plot_type == "boundary layer thicknesses":
             pass # TODO: Implement function
 
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> master
         plt.show()
