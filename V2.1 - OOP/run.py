@@ -8,12 +8,15 @@ dataprocessor = DataProcessor(data_path=piv_path, data_resolution=2)
 
 # Plot the Velocity or Acceleration Heatmap
 # dataprocessor.plot("acceleration heatmap"
+
 # Initialize a streamline with custom seed
 # streamline = Streamline(dataprocessor, seed = [0.47, 0.001])
 
 # Plot the above initialized streamline in a basic streamline plot
 # streamline.plot()
 
-# get the target contour using the acceleration map
-dataprocessor.getTargetContourAcceleration(plot=True)
+# Get the target points and target polynomial using the acceleration map
+_, target_polynomial = dataprocessor.getTargetContourAcceleration(plot=False)
+
+# Initialize the Fitter object
  
