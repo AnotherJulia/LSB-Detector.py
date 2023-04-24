@@ -6,6 +6,8 @@ import os
 from scipy.interpolate import RegularGridInterpolator, interp1d
 from scipy.integrate import solve_ivp, simpson
 
+from Streamline import *
+
 
 # Initialize some fixed variables
 x_dim, y_dim = 395, 57
@@ -20,6 +22,7 @@ class DataProcessor():
         self.resolution = data_resolution
 
         self.storeData()
+        self.estimateLaminarHeight(seperation_point_estimate=0.45)
         
     def storeData(self):
         piv_file_path = os.path.join(os.path.dirname(__file__), "../PIV.dat")
@@ -102,39 +105,130 @@ class DataProcessor():
             print("Finite Difference Method : Incorrect output method for the Finite Difference Method")
 
 
-    def plot(self, plot_type="velocity heatmap", hold_show=False):
+    def plot(self, plot_type="velocity heatmap"):
         """plot_type options: "velocity heatmap", "acceleration heatmap" """
         
         if (plot_type == "velocity heatmap"):
             heatmap_grid = self.getVelocityOverGrid()
-            self._plotVelocityHeatmap(heatmap_grid, hold_show)
+            self._plotVelocityHeatmap(heatmap_grid)
 
         elif (plot_type == "acceleration heatmap"):
             heatmap_grid = self.getAccelerationOverGrid()
-            self._plotAccelerationHeatmap(heatmap_grid, hold_show)
+            self._plotAccelerationHeatmap(heatmap_grid)
 
-
-        if not hold_show:  
-            plt.show()
-
-    def _plotVelocityHeatmap(self, heatmap_grid, hold_show):
+    def _plotVelocityHeatmap(self, heatmap_grid):
         fig_heatmap, ax_heatmap = plt.subplots()
         heatmap = ax_heatmap.imshow(heatmap_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
         plt.colorbar(heatmap, label="Absolute velocity", ax=ax_heatmap)
         ax_heatmap.set_xlabel("x/c [-]")
         ax_heatmap.set_ylabel("y/c [-]")
 
-        if hold_show: return ax_heatmap
-
-    def _plotAccelerationHeatmap(self, heatmap_grid, hold_show):
+    def _plotAccelerationHeatmap(self, heatmap_grid):
         fig_gradient, ax_gradient = plt.subplots()
         heatmap = ax_gradient.imshow(heatmap_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
         plt.colorbar(heatmap, label="Absolute acceleration", ax=ax_gradient)
         ax_gradient.set_xlabel("x/c [-]")
         ax_gradient.set_ylabel("y/c [-]")
 
-        if hold_show: return ax_gradient
+
+    def estimateLaminarHeight(self, seperation_point_estimate, n_steps=10, return_=False):
+        uCi, _ = self._getVelocityComponents()
+
+        umax, umin = uCi.max(), uCi.min()
+
+        # TODO: Find auto mean function
+        mean = 0.55 
+
+        contour_x, contour_y = self._getContourPoints(mean)
+
+        heights = []
+        for i in range(0, len(contour_x), int(len(contour_x/n_steps))):
+            if contour_x[i] < seperation_point_estimate:
+                heights.append(contour_y[i])
+        estimated_height = np.mean(heights)
+
+        self.laminar_height = estimated_height
+
+        if return_: return estimated_height
+
+    def _getVelocityComponents(self):
+        u_intpl, v_intpl = self.getGridInterpolator()
+        
+        xi = np.linspace(self.X.min(), self.X.max(), x_dim)
+        yi = np.linspace(self.Y.min(), self.Y.max(), y_dim)
+        xy_points = np.array([[x,y] for x in xi for y in yi])
+
+        uCi = u_intpl(xy_points)
+        vCi = v_intpl(xy_points)
+
+        return uCi, vCi
+    
+    def _getContourPoints(self, mean):
+
+        # Create the grid for the matplotlib plot
+        xh = np.linspace(self.X.min(), self.X.max(), x_dim*self.resolution)
+        yh = np.linspace(self.Y.min(), self.Y.max(), y_dim*self.resolution)
+        absolute_velocity = self.getVelocityOverGrid()
+
+        # Let matplotlib calculate contour points and extract those without plotting anything
+        fig_contour, ax_contour = plt.subplots()
+        contour = ax_contour.contour(xh, yh, absolute_velocity.reshape(y_dim*self.resolution, x_dim*self.resolution), levels=[mean], colors="black", linewidths=1)
+        p = contour.allsegs[0]
+        plt.close(fig_contour)
+
+        # Extract the contour points
+        contour_x = p[0][:, 0]
+        contour_y = p[0][:, 1]
+
+        return contour_x, contour_y
+
+    def getTargetContourVelocity(self, n_steps=15, degree=6, plot_hm=False):
+        uCi, _ = self._getVelocityComponents()
+        umax, umin = uCi.max(), uCi.min()
+        mean = 0.5 * (umax + umin)
+
+        # Retrieve the contour points set on that mean
+        contour_x, contour_y = self._getContourPoints(mean)
+
+        # Set automatic target contour boundaries based on the laminar height and existing contour points
+        contour_cutoff_min = contour_x[np.where(contour_y > self.laminar_height*3)[0][0]]
+        contour_cutoff_max = contour_x[np.argmax(contour_y)-300]
+
+        points = []
+        for i in range(len(contour_x)):
+            if contour_cutoff_min < contour_x[i] < contour_cutoff_max and contour_y[i] > self.laminar_height:
+                coord = [contour_x[i], contour_y[i]]
+                points.append(coord)
+        points = np.array(points)
+
+
+        # Let's filter some of the selected points out
+        filtered_points = []
+        filter_step = int(len(points)/n_steps)
+
+        for i in range(0, len(points), filter_step):
+            filtered_points.append(points[i])
+        filtered_points = np.array(filtered_points)
+
+        # Using the contour points, fit a polynomial!
+        coeff = np.polyfit(filtered_points[:, 0], filtered_points[:, 1], degree)
+        polynomial = np.poly1d(coeff)
+
+        if plot_hm:
+            heatmap_grid = self.getVelocityOverGrid()
+            fig_heatmap, ax_heatmap = plt.subplots()
+            heatmap = ax_heatmap.imshow(heatmap_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
+            plt.colorbar(heatmap, label="Absolute velocity", ax=ax_heatmap)
+            ax_heatmap.set_xlabel("x/c [-]")
+            ax_heatmap.set_ylabel("y/c [-]")
+
+            ax_heatmap.scatter(filtered_points[:,0], filtered_points[:,1], color="black", s=1)
+            ax_heatmap.plot(filtered_points[:,0], polynomial(filtered_points[:,0]), color="red", linewidth=0.8)
+
+            plt.show()
+
+        return filtered_points, polynomial
+
 
         
-
 
