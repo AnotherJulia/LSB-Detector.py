@@ -56,8 +56,8 @@ class Fitter():
             
             print("Obtaining new boundaries")
 
-            xc_min = gen_seed[0] - gen_steps[generation_id] * gen_seed[0]/5
-            xc_max = gen_seed[0] + gen_steps[generation_id] * gen_seed[0]/5
+            xc_min = gen_seed[0] - gen_steps[generation_id] * gen_seed[0]/7
+            xc_max = gen_seed[0] + gen_steps[generation_id] * gen_seed[0]/7
             print("New boundaries: ", xc_min, " | ", xc_max)
         
         print("All generations completed, final seed obtained: ", gen_seed, " with similarity: ", 1/best_score)

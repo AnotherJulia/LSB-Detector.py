@@ -17,7 +17,7 @@ step = 20
 
 
 class DataProcessor():
-    def __init__(self, data_path, data_resolution=2, acceleration_resolution=2):
+    def __init__(self, data_path, data_resolution=2, acceleration_resolution=3):
         self.path = data_path
         self.resolution = data_resolution
         self.acceleration_resolution = acceleration_resolution
@@ -28,6 +28,8 @@ class DataProcessor():
         self.estimateLaminarHeight(seperation_point_estimate_xc=0.45)
 
         self.target_steps = 10
+
+        self.a_interpolator = 0
 
         
     def storeData(self):
@@ -46,7 +48,7 @@ class DataProcessor():
         self.X, self.Y = sorted_data[:, 0], sorted_data[:, 1]
         self.U, self.V = sorted_data[:, 2], sorted_data[:, 3]
         
-    def getGridInterpolator(self):
+    def getVelocityGridInterpolator(self):
         xi = np.linspace(self.X.min(), self.X.max(), x_dim)
         yi = np.linspace(self.Y.min(), self.Y.max(), y_dim)
         xy_points = np.array([[x, y] for x in xi for y in yi])
@@ -65,7 +67,7 @@ class DataProcessor():
         yh = np.linspace(self.Y.min(), self.Y.max(), self.ycount)
         xy_grid = np.array([[x, y] for x in xh for y in yh])
 
-        u_intpl, _ = self.getGridInterpolator()
+        u_intpl, _ = self.getVelocityGridInterpolator()
 
         absolute_velocity = u_intpl(xy_grid).reshape((self.xcount,self.ycount)).T
         return absolute_velocity
@@ -76,7 +78,7 @@ class DataProcessor():
         yh = np.linspace(self.Y.min(), self.Y.max(), y_dim)
         xy_grid = np.array([[x, y] for x in xh for y in yh])
 
-        u_intpl, _ = self.getGridInterpolator()
+        u_intpl, _ = self.getVelocityGridInterpolator()
 
         absolute_velocity = u_intpl(xy_grid).reshape((x_dim, y_dim)).T
         return absolute_velocity
@@ -120,32 +122,55 @@ class DataProcessor():
             print("Finite Difference Method : Incorrect output method for the Finite Difference Method")
 
 
-    def plot(self, plot_type="velocity heatmap"):
-        """plot_type options: "velocity heatmap", "acceleration heatmap" """
+    def plot(self, plot_type="velocity heatmap", resolution=1, save_image=False):
+        """plot_type options: "velocity heatmap", "acceleration heatmap" # add --interpolate to find an interpolated plot """
         
         if (plot_type == "velocity heatmap"):
             heatmap_grid = self.getVelocityOverGrid()
-            self._plotVelocityHeatmap(heatmap_grid)
+            self._plotVelocityHeatmap(heatmap_grid, save_image)
+
+        elif (plot_type == "velocity heatmap --interpolate"):
+            heatmap_grid = self.getVelocityHeatmap(resolution=resolution)
+            self._plotVelocityHeatmap(heatmap_grid, save_image)
 
         elif (plot_type == "acceleration heatmap"):
             heatmap_grid = self.getAccelerationOverGrid()
-            self._plotAccelerationHeatmap(heatmap_grid)
-        
-        plt.show()
+            self._plotAccelerationHeatmap(heatmap_grid, save_image)
 
-    def _plotVelocityHeatmap(self, heatmap_grid):
+        elif (plot_type == "acceleration heatmap --interpolate"):
+            heatmap_grid = self.getAccelerationHeatmap(resolution=resolution)
+            self._plotAccelerationHeatmap(heatmap_grid, save_image)
+        
+        if save_image == False:
+            plt.show()
+
+    def getVelocityHeatmap(self, resolution):
+        xh = np.linspace(self.X.min(), self.X.max(), x_dim*resolution)
+        yh = np.linspace(self.Y.min(), self.Y.max(), y_dim*resolution)
+        xy_grid = np.array([[x, y] for x in xh for y in yh])
+
+        u_intpl, _ = self.getVelocityGridInterpolator()
+
+        absolute_velocity = u_intpl(xy_grid).reshape((x_dim*resolution,y_dim*resolution)).T
+        return absolute_velocity
+
+    def _plotVelocityHeatmap(self, heatmap_grid, save_image):
         fig_heatmap, ax_heatmap = plt.subplots()
         heatmap = ax_heatmap.imshow(heatmap_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
         plt.colorbar(heatmap, label="Absolute velocity", ax=ax_heatmap)
         ax_heatmap.set_xlabel("x/c [-]")
         ax_heatmap.set_ylabel("y/c [-]")
 
-    def _plotAccelerationHeatmap(self, heatmap_grid):
+        if save_image: plt.savefig("Velocity Heatmap", dpi=300)
+
+    def _plotAccelerationHeatmap(self, heatmap_grid, save_image):
         fig_gradient, ax_gradient = plt.subplots()
         heatmap = ax_gradient.imshow(heatmap_grid[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
-        plt.colorbar(heatmap, label="Absolute acceleration", ax=ax_gradient)
+        plt.colorbar(heatmap, label="Absolute Velocity Gradient", ax=ax_gradient)
         ax_gradient.set_xlabel("x/c [-]")
         ax_gradient.set_ylabel("y/c [-]")
+
+        if save_image: plt.savefig("Velocity Gradient Heatmap", dpi=300)
 
 
     def estimateLaminarHeight(self, seperation_point_estimate_xc, n_steps=10, return_=False):
@@ -170,7 +195,7 @@ class DataProcessor():
         
 
     def _getVelocityComponents(self):
-        u_intpl, v_intpl = self.getGridInterpolator()
+        u_intpl, v_intpl = self.getVelocityGridInterpolator()
         
         xi = np.linspace(self.X.min(), self.X.max(), x_dim)
         yi = np.linspace(self.Y.min(), self.Y.max(), y_dim)
@@ -250,8 +275,10 @@ class DataProcessor():
     
     def getTargetContourAcceleration(self, degree=2, plot=False):
         print("Starting Target Sequence")
-        raw_acceleration_grid = self.getAccelerationOverGrid()
-        self.a_interpolator = self._getAccelerationInterpolator(raw_acceleration_grid)
+        if self.a_interpolator == 0:
+            print("Generating Acceleration Interpolator")
+            raw_acceleration_grid = self.getAccelerationOverGrid()
+            self.a_interpolator = self._getAccelerationInterpolator(raw_acceleration_grid)
         print("Acceleration interpolator found")
 
         xi = np.linspace(self.X.min(), self.X.max(), x_dim*self.acceleration_resolution)
@@ -263,7 +290,6 @@ class DataProcessor():
         for point in xy_points:
             acc = self.a_interpolator(point[0], point[1])
             interpolated_acceleration.append(acc)
-
 
         interpolated_acceleration = np.array(interpolated_acceleration).reshape((x_dim*self.acceleration_resolution, y_dim*self.acceleration_resolution))
         print("Interpolated acceleration found")
@@ -336,12 +362,33 @@ class DataProcessor():
 
         return contour_points, polynomial
 
+    def getAccelerationHeatmap(self, resolution=2):
+        if self.a_interpolator == 0:
+            print("Generating Acceleration Interpolator")
+            raw_acceleration_grid = self.getAccelerationOverGrid()
+            self.a_interpolator = self._getAccelerationInterpolator(raw_acceleration_grid)
+
+        xi = np.linspace(self.X.min(), self.X.max(), x_dim*resolution)
+        yi = np.linspace(self.Y.min(), self.Y.max(), y_dim*resolution)
+        xy_points = np.array([[x,y] for x in xi for y in yi])
+
+        interpolated_acceleration = []
+        for point in xy_points:
+            acc = self.a_interpolator(point[0], point[1])
+            interpolated_acceleration.append(acc)
+
+        interpolated_acceleration = np.array(interpolated_acceleration).reshape((x_dim*resolution, y_dim*resolution))
+
+        heatmap = interpolated_acceleration.T
+
+        return heatmap
+
     def _getAccelerationInterpolator(self, acceleration_grid):
         interpolator = interp2d(np.unique(self.X), np.unique(self.Y), acceleration_grid)    
 
         return interpolator
 
-    def plotTargetPolynomial(self, target_polynomial):
+    def plotTargetPolynomial(self, target_polynomial, save_image=False):
         xi = np.linspace(self.X.min(), self.X.max(), x_dim*self.acceleration_resolution)
         yi = np.linspace(self.Y.min(), self.Y.max(), y_dim*self.acceleration_resolution)
         xy_points = np.array([[x,y] for x in xi for y in yi])
@@ -356,14 +403,18 @@ class DataProcessor():
 
         fig_gradient, ax_gradient = plt.subplots()
         heatmap = ax_gradient.imshow(interpolated_acceleration[::-1,:], extent=(self.raw_data[-1,0], self.raw_data[0,0], self.raw_data[-1,1], self.raw_data[0,1]), cmap=cm.turbo, interpolation="nearest", aspect="auto")
-        plt.colorbar(heatmap, label="Absolute acceleration [1/U$_{inf}$]", ax=ax_gradient)
+        plt.colorbar(heatmap, label="Absolute acceleration", ax=ax_gradient)
         ax_gradient.set_xlabel("x/c [-]")
         ax_gradient.set_ylabel("y/c [-]")
         
         xspace = np.linspace(0.51, 0.64, self.target_steps)
         targety = target_polynomial(xspace)
 
-        ax_gradient.scatter(xspace, targety, color="blue", s=1)
-        ax_gradient.plot(xspace, targety, color="black", linewidth=1.2)
+        
+        ax_gradient.plot(xspace, targety, color="black", linewidth=1)
+        ax_gradient.scatter(xspace, targety, color="blue", s=7)
 
-        plt.show()
+        if save_image:
+            plt.savefig("Velocity Gradient Target Points", dpi=300)
+        else:
+            plt.show()

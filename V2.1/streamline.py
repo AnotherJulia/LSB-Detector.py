@@ -27,11 +27,12 @@ class Streamline():
         self.xspace = np.linspace(self.dataprocessor.X.min(), self.dataprocessor.X.max(), 395*self.resolution)
 
         self.generateStreamlinePoints(self.xspace, min_y=cutoff_laminar)
+        self.transition = self.retrieveTransitionPoint()
     
     def f(self, t, xy):
         if xy[1] < self.dataprocessor.y.min() or xy[1] > self.dataprocessor.y.max() or xy[0] < self.dataprocessor.x.min() or xy[0] > self.dataprocessor.x.max():
             return np.array([0, 0])
-        u_intpl, v_intpl = self.dataprocessor.getGridInterpolator()
+        u_intpl, v_intpl = self.dataprocessor.getVelocityGridInterpolator()
         return np.squeeze([u_intpl(xy), v_intpl(xy)])
     
     def generateStreamlinePoints(self, xspace, min_y):
@@ -53,9 +54,9 @@ class Streamline():
         positions = np.array(xy_points)
         return positions
 
-    def plot(self, plot_type="streamline"):
-        """plot_type options: "streamline", "boundary layer thicknesses"""
-        if plot_type == "streamline":
+    def plot(self, plot_type="streamline velocity", save=False):
+        """plot_type options: "streamline velocity", "streamline velocity gradient", "boundary layer thicknesses"""
+        if plot_type == "streamline velocity":
             heatmap_grid = self.dataprocessor.getVelocityOverGrid()
             
             # Plot the heatmap
@@ -73,12 +74,37 @@ class Streamline():
             ax_heatmap.plot(self.positions[0], self.positions[1], "r-")
             ax_heatmap.plot((self.separation[0], self.reattachment[0]), (self.separation[1], self.reattachment[1]), "ro")
             
-            # TODO: ADD Transition point determination!
+            ax_heatmap.plot(self.transition, self.position_intpl(self.transition), "ro")
 
-        elif plot_type == "boundary layer thicknesses":
-            pass # TODO: Implement function
+            if save == True:
+                plt.savefig("Streamline Velocity Heatmap", dpi=300)
 
-        plt.show()
+        elif plot_type == "streamline velocity gradient":
+            
+            heatmap_grid = self.dataprocessor.getAccelerationHeatmap()
+                
+            # Plot the heatmap
+            fig_heatmap, ax_heatmap = plt.subplots()
+            heatmap = ax_heatmap.imshow(heatmap_grid[::-1,:], extent=(self.dataprocessor.raw_data[-1,0], self.dataprocessor.raw_data[0,0], self.dataprocessor.raw_data[-1,1], self.dataprocessor.raw_data[0,1]), interpolation="nearest", aspect="auto")
+            plt.colorbar(heatmap, label="Absolute velocity gradient", ax=ax_heatmap)
+            ax_heatmap.set_xlabel("x/c [-]")
+            ax_heatmap.set_ylabel("y/c [-]")
+
+            # Plot the cutoff lines
+            ax_heatmap.plot((self.dataprocessor.x.min(), self.dataprocessor.x.max()), (cutoff_reattachment, cutoff_reattachment), "k--", linewidth=0.5)
+            ax_heatmap.plot((self.dataprocessor.x.min(), self.dataprocessor.x.max()), (laminar_height, laminar_height), "k--", linewidth=0.5) 
+            
+            ax_heatmap.plot(self.extrapolated[:,0], self.extrapolated[:,1], "r--")
+            ax_heatmap.plot(self.positions[0], self.positions[1], "r-")
+            ax_heatmap.plot((self.separation[0], self.reattachment[0]), (self.separation[1], self.reattachment[1]), "ro")
+            
+            ax_heatmap.plot(self.transition, self.position_intpl(self.transition), "ro")
+
+            if save == True:
+                plt.savefig("Streamline Velocity Gradient Heatmap", dpi=300)
+
+        if save == False:
+            plt.show()
 
     def retrieveCharacteristics(self, decimals=4):
         transition = np.round(self.retrieveTransitionPoint(),decimals=decimals)
